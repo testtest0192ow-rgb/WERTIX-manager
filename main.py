@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 import datetime
 import os
 import re
@@ -22,60 +21,56 @@ def parse_time(time_str):
     multipliers = {'s': 1/60, 'm': 1, 'h': 60, 'd': 1440}
     return int(amount * multipliers.get(unit, 1))
 
-# Красивый и чистый стиль
-def create_embed(member, title, action, reason, duration=None):
-    embed = discord.Embed(title=title, color=0x2b2d31)
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="Пользователь", value=member.mention, inline=True)
-    embed.add_field(name="Действие", value=action, inline=True)
-    embed.add_field(name="Причина", value=reason, inline=False)
-    if duration:
-        embed.add_field(name="Длительность", value=duration, inline=True)
-    embed.set_footer(text=f"ID: {member.id} | WERTIX SYSTEM")
+def create_embed(title, desc):
+    embed = discord.Embed(title=title, description=desc, color=0x2b2d31)
+    embed.set_footer(text="WERTIX SYSTEM | SECURE OPERATIONS")
     embed.timestamp = discord.utils.utcnow()
     return embed
 
-# ЛС сообщение (кратко и по делу)
-async def send_dm(member, title, text):
-    try:
-        embed = discord.Embed(title=title, description=text, color=0x2b2d31)
-        await member.send(embed=embed)
-    except: pass
-
-@bot.tree.command(name="mute", description="Выдать мут")
-async def mute(int: discord.Interaction, member: discord.Member, time: str, reason: str = "Не указана"):
-    await int.response.defer()
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def mute(ctx, member: discord.Member, time: str, *, reason: str = "Не указана"):
     mins = parse_time(time)
     await member.timeout(discord.utils.utcnow() + datetime.timedelta(minutes=mins), reason=reason)
-    embed = create_embed(member, "🔇 Мут", "Ограничение доступа", reason, time)
-    await int.followup.send(embed=embed)
-    await send_dm(member, "🔇 Вы получили мут", f"Причина: {reason}\nВремя: {time}")
+    await ctx.send(embed=create_embed("🔇 Мут", f"{member.mention} на {time}.\nПричина: {reason}"))
 
-@bot.tree.command(name="ban", description="Забанить")
-async def ban(int: discord.Interaction, member: discord.Member, reason: str = "Не указана"):
-    await member.ban(reason=reason)
-    embed = create_embed(member, "🔨 Бан", "Полный запрет", reason)
-    await int.response.send_message(embed=embed)
-    await send_dm(member, "🔨 Вы забанены", f"Причина: {reason}")
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def unmute(ctx, member: discord.Member):
+    await member.timeout(None)
+    await ctx.send(embed=create_embed("✅ Анмут", f"{member.mention} свободен."))
 
-@bot.tree.command(name="warn", description="Предупреждение")
-async def warn(int: discord.Interaction, member: discord.Member, reason: str = "Не указана"):
-    await int.response.defer()
-    uid = member.id
-    warns[uid] = warns.get(uid, 0) + 1
-    if warns[uid] >= 3:
-        warns[uid] = 0
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def warn(ctx, member: discord.Member, *, reason: str = "Не указана"):
+    warns[member.id] = warns.get(member.id, 0) + 1
+    if warns[member.id] >= 3:
+        warns[member.id] = 0
         await member.timeout(discord.utils.utcnow() + datetime.timedelta(hours=1), reason="3 варна")
-        embed = create_embed(member, "🚫 Авто-мут", "Лимит варнов 3/3", "Превышение лимита", "1 час")
-        await send_dm(member, "🚫 Авто-мут", "Вы получили 3 варна и отправлены в мут на 1 час.")
+        await ctx.send(embed=create_embed("🚫 Авто-мут", f"{member.mention} — 3/3 варна. 1 час мута."))
     else:
-        embed = create_embed(member, "⚠️ Предупреждение", f"Варн {warns[uid]}/3", reason)
-        await send_dm(member, "⚠️ Предупреждение", f"Варн {warns[uid]}/3. Причина: {reason}")
-    await int.followup.send(embed=embed)
+        await ctx.send(embed=create_embed("⚠️ Варн", f"{member.mention} ({warns[member.id]}/3)\nПричина: {reason}"))
+
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason: str = "Не указана"):
+    await member.ban(reason=reason)
+    await ctx.send(embed=create_embed("🔨 Бан", f"{member.mention} забанен.\nПричина: {reason}"))
+
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def unban(ctx, user_id: int):
+    user = await bot.fetch_user(user_id)
+    await ctx.guild.unban(user)
+    await ctx.send(embed=create_embed("🔓 Разбан", f"{user.name} снова в строю."))
+
+@bot.command()
+async def warnlist(ctx):
+    desc = "\n".join([f"<@{uid}>: {count}/3" for uid, count in warns.items() if count > 0]) or "Список чист."
+    await ctx.send(embed=create_embed("📋 Warn List", desc))
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print("WERTOX SYSTEM | ONLINE")
+    print("WERTIX SYSTEM | FULLY OPERATIONAL")
 
 bot.run(TOKEN)
