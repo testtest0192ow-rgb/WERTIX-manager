@@ -1,6 +1,27 @@
-import discord, datetime, os, json
+from flask import Flask
+from threading import Thread
+import discord
+import datetime
+import os
+import json
 from discord import app_commands
 from discord.ext import commands
+
+# --- ВЕБ-СЕРВЕР ДЛЯ ПОДДЕРЖАНИЯ ЖИЗНИ НА RENDER ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "WERTIX SECURITY: Operational"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+keep_alive()
 
 # --- ЯДРО И КОНФИГУРАЦИЯ ---
 intents = discord.Intents.default()
@@ -9,58 +30,62 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 WARNS_FILE = "warns.json"
-LOG_CHANNEL_ID = 1523365711790080151 
+LOG_CHANNEL_ID = 1523365711790080151
 
 def load_data():
     if os.path.exists(WARNS_FILE):
         try:
-            with open(WARNS_FILE, "r") as f: 
+            with open(WARNS_FILE, "r") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
     return {}
 
-warns = load_data()
-
 def save_data():
-    with open(WARNS_FILE, "w") as f: 
+    with open(WARNS_FILE, "w") as f:
         json.dump(warns, f, indent=4)
 
-# --- WERTIX QUANTUM UI ---
+warns = load_data()
+
+# --- WERTIX SECURITY PREMIUM UI ---
 class UI:
     @staticmethod
     def embed(title, desc, color, target, admin, fields=None):
-        embed = discord.Embed(title=f"『 WERTIX SECURITY 』 :: {title}", description=desc, color=color)
-        embed.set_author(name=f"Admin: {admin.display_name}", icon_url=admin.display_avatar.url)
-        embed.set_thumbnail(url=target.display_avatar.url)
-        embed.add_field(name="Target Identity", value=f"{target.mention} (`{target.id}`)", inline=True)
+        embed = discord.Embed(
+            title=f"WERTIX SECURITY | {title.upper()}",
+            description=desc,
+            color=color,
+            timestamp=datetime.datetime.now()
+        )
+        embed.set_author(name=f"Moderator: {admin.display_name}", icon_url=admin.display_avatar.url)
+        if target:
+            embed.set_thumbnail(url=target.display_avatar.url)
+            embed.add_field(name="Target User", value=target.mention, inline=True)
+        
         if fields:
-            for k, v in fields.items(): 
+            for k, v in fields.items():
                 embed.add_field(name=k, value=v, inline=True)
-        embed.set_footer(text="WERTIX SEC | TRANSCENDENT PROTOCOL 2026", icon_url=target.guild.icon.url if target.guild.icon else None)
-        embed.timestamp = datetime.datetime.now()
+                
+        embed.set_footer(text="WERTIX SEC | TRANSCENDENT PROTOCOL")
         return embed
 
-# --- ДИСПЕТЧЕР (БЕЗОПАСНАЯ ДОСТАВКА) ---
+# --- ДИСПЕТЧЕР БЕЗОПАСНОСТИ ---
 async def dispatch(interaction, member, title, desc, color, fields=None):
     try:
         embed = UI.embed(title, desc, color, member, interaction.user, fields)
         
-        # Проверяем, ответил ли уже бот на это взаимодействие
         if interaction.response.is_done():
             await interaction.followup.send(embed=embed)
         else:
             await interaction.response.send_message(embed=embed)
             
-        # Отправка лога в канал
         log_ch = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_ch: 
+        if log_ch:
             await log_ch.send(embed=embed)
             
-        # Отправка уведомления нарушителю в ЛС
-        try: 
+        try:
             await member.send(embed=embed)
-        except: 
+        except Exception:
             pass
     except Exception as e:
         print(f"CRITICAL DISPATCH ERROR: {e}")
@@ -68,87 +93,85 @@ async def dispatch(interaction, member, title, desc, color, fields=None):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"WERTIX SYSTEM | TRANSCENDENT MODE | OPERATIONAL")
+    print("WERTIX SYSTEM | TRANSCENDENT MODE | OPERATIONAL")
 
-# --- КОМАНДЫ ---
+# --- КОМАНДЫ МОДЕРАЦИИ ---
 
-@bot.tree.command(name="ban", description="Перманентная блокировка")
+@bot.tree.command(name="ban", description="Перманентная блокировка пользователя")
 @app_commands.checks.has_permissions(ban_members=True)
-async def ban(interaction, member: discord.Member, reason: str = "Нарушение протокола"):
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "Нарушение правил"):
     await member.ban(reason=reason)
-    await dispatch(interaction, member, "BAN", "Объект удален из реестра сервера.", discord.Color.red(), {"Reason": reason})
+    await dispatch(interaction, member, "BAN", f"Объект удален из реестра.\nПричина: {reason}", discord.Color.red())
 
-@bot.tree.command(name="unban", description="Восстановление доступа")
+@bot.tree.command(name="unban", description="Восстановление доступа пользователю")
 @app_commands.checks.has_permissions(ban_members=True)
-async def unban(interaction, user_id: str):
-    # Сначала говорим Дискорду, что мы приняли команду (чтобы не было "Приложение не отвечает")
+async def unban(interaction: discord.Interaction, user_id: str):
     await interaction.response.defer(ephemeral=True)
     try:
         user = await bot.fetch_user(int(user_id))
         await interaction.guild.unban(user)
-        await interaction.followup.send(f"✅ Доступ для {user.name} восстановлен.", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Не удалось снять бан. Ошибка: {e}", ephemeral=True)
+        await interaction.followup.send(f"Доступ для {user.name} восстановлен.")
+    except Exception:
+        await interaction.followup.send("Не удалось снять бан. Проверьте ID.")
 
 @bot.tree.command(name="mute", description="Таймаут нарушителя")
 @app_commands.checks.has_permissions(moderate_members=True)
-async def mute(interaction, member: discord.Member, minutes: int, reason: str = "Нарушение"):
+async def mute(interaction: discord.Interaction, member: discord.Member, minutes: int, reason: str = "Нарушение правил"):
     await member.timeout(datetime.timedelta(minutes=minutes), reason=reason)
-    await dispatch(interaction, member, "TIMEOUT", "Изоляция активирована.", discord.Color.gold(), {"Duration": f"{minutes} min", "Reason": reason})
+    await dispatch(interaction, member, "TIMEOUT", f"Изоляция активирована на {minutes} мин.\nПричина: {reason}", discord.Color.orange())
 
 @bot.tree.command(name="unmute", description="Снятие таймаута")
 @app_commands.checks.has_permissions(moderate_members=True)
-async def unmute(interaction, member: discord.Member):
+async def unmute(interaction: discord.Interaction, member: discord.Member):
     await member.edit(timed_out_until=None)
-    await dispatch(interaction, member, "UNMUTE", "Изоляция принудительно снята.", discord.Color.green())
+    await dispatch(interaction, member, "UNMUTE", "Изоляция принудительно прекращена.", discord.Color.green())
 
-@bot.tree.command(name="warn", description="Регистрация инцидента")
+@bot.tree.command(name="warn", description="Регистрация инцидента и выдача предупреждения")
 @app_commands.checks.has_permissions(manage_messages=True)
-async def warn(interaction, member: discord.Member, reason: str = "Нарушение"):
+async def warn(interaction: discord.Interaction, member: discord.Member, reason: str = "Нарушение правил"):
     uid = str(member.id)
     warns[uid] = warns.get(uid, 0) + 1
     count = warns[uid]
-    desc = "Предупреждение зафиксировано в реестре."
+    
+    desc = f"Предупреждение зафиксировано в реестре.\nПричина: {reason}"
     
     if count >= 3:
-        await member.timeout(datetime.timedelta(hours=5), reason="Критический лимит 3/3")
-        desc = "Критический лимит достигнут! Активирован 5-часовой протокол изоляции."
+        await member.timeout(datetime.timedelta(hours=5), reason="Критический лимит предупреждений")
+        desc = "Критический лимит достигнут. Активирован 5-часовой протокол изоляции."
         warns[uid] = 0
         
     save_data()
-    await dispatch(interaction, member, "WARNING", desc, discord.Color.yellow(), {"Violations": f"{count}/3", "Reason": reason})
+    await dispatch(interaction, member, "WARNING", desc, discord.Color.yellow(), {"Всего варнов": str(count)})
 
-@bot.tree.command(name="unwarn", description="Аннулирование дисциплинарного инцидента")
+@bot.tree.command(name="unwarn", description="Аннулирование дисциплинарного предупреждения")
 @app_commands.checks.has_permissions(manage_messages=True)
-async def unwarn(interaction, member: discord.Member):
+async def unwarn(interaction: discord.Interaction, member: discord.Member):
     uid = str(member.id)
     if uid in warns and warns[uid] > 0:
         warns[uid] -= 1
         count = warns[uid]
         save_data()
-        await dispatch(interaction, member, "UNWARN", "Дисциплинарная запись аннулирована.", discord.Color.green(), {"Remaining": f"{count}/3"})
+        await dispatch(interaction, member, "UNWARN", "Дисциплинарное замечание аннулировано.", discord.Color.green(), {"Осталось варнов": str(count)})
     else:
-        await interaction.response.send_message("❌ У объекта нет активных нарушений.", ephemeral=True)
+        await interaction.response.send_message("У объекта нет активных предупреждений.", ephemeral=True)
 
 @bot.tree.command(name="clear", description="Очистка сообщений")
 @app_commands.checks.has_permissions(manage_messages=True)
-async def clear(interaction, amount: int):
+async def clear(interaction: discord.Interaction, amount: int):
     if amount < 1 or amount > 100:
-        return await interaction.response.send_message("❌ Укажите число от 1 до 100.", ephemeral=True)
-    
-    # Сначала деферим ответ, чтобы Дискорд дал нам время на удаление сообщений
+        return await interaction.response.send_message("Укажите число от 1 до 100.", ephemeral=True)
+        
     await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=amount)
-    await interaction.followup.send(f"✅ Очищено {len(deleted)} сообщений.", ephemeral=True)
+    await interaction.followup.send(f"Очищено сообщений: {len(deleted)}")
 
-@bot.tree.command(name="warnlist", description="Глобальный реестр нарушителей")
+@bot.tree.command(name="warnlist", description="Глобальный реестр нарушений")
 @app_commands.checks.has_permissions(manage_messages=True)
-async def warnlist(interaction):
-    data = sorted([(u, c) for u, c in warns.items() if c > 0], key=lambda x: x[1], reverse=True)
-    list_str = "\n".join([f"• <@{u}> — **{c} варнов**" for u, c in data]) or "База данных чиста."
-    embed = discord.Embed(title="📜 WERTIX | GLOBAL REGISTRY", description=list_str, color=discord.Color.blue())
+async def warnlist(interaction: discord.Interaction):
+    data = sorted([(k, v) for k, v in warns.items() if v > 0], key=lambda x: x[1], reverse=True)
+    list_str = "\n".join([f"<@{u}> — {c} варнов" for u, c in data]) if data else "Реестр пуст."
+    
+    embed = discord.Embed(title="WERTIX | GLOBAL REGISTRY", description=list_str, color=discord.Color.blurple())
     await interaction.response.send_message(embed=embed)
 
-# Замени os.environ на строку со своим токеном, если не используешь переменные окружения:
-# bot.run("ТВОЙ_ТОКЕН")
 bot.run(os.environ['DISCORD_TOKEN'])
