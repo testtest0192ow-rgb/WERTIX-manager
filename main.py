@@ -93,6 +93,18 @@ async def warn(interaction, member: discord.Member, reason: str = "Наруше�
     save_data()
     await dispatch(interaction, member, "WARNING", desc, discord.Color.yellow(), {"Violations": f"{count}/3", "Reason": reason})
 
+@bot.tree.command(name="unwarn", description="Аннулирование дисциплинарного инцидента")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def unwarn(interaction, member: discord.Member):
+    uid = str(member.id)
+    if uid in warns and warns[uid] > 0:
+        warns[uid] -= 1
+        count = warns[uid]
+        save_data()
+        await dispatch(interaction, member, "UNWARN", "Дисциплинарная запись аннулирована.", discord.Color.green(), {"Remaining": f"{count}/3"})
+    else:
+        await interaction.response.send_message("❌ У объекта нет активных нарушений.", ephemeral=True)
+
 @bot.tree.command(name="warnlist", description="Глобальный реестр нарушителей")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def warnlist(interaction):
@@ -102,4 +114,3 @@ async def warnlist(interaction):
     await interaction.response.send_message(embed=embed)
 
 bot.run(os.environ['DISCORD_TOKEN'])
-               
