@@ -3,7 +3,6 @@ from discord.ext import commands
 from discord import app_commands
 import datetime
 import os
-import re
 
 TOKEN = os.environ.get('TOKEN')
 
@@ -12,55 +11,76 @@ intents.message_content = True
 intents.members = True 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+warns = {}
+
 def create_embed(title, desc):
     embed = discord.Embed(title=title, description=desc, color=0x2b2d31)
-    embed.set_footer(text="WERTIX SYSTEM | SECURE OPERATIONS")
+    embed.set_footer(text="WERTIX SYSTEM | ELITE PROTECTION")
     embed.timestamp = discord.utils.utcnow()
     return embed
 
-# --- СЛЕШ-КОМАНДЫ (С ЗАЩИТОЙ) ---
+# --- КОМАНДЫ ---
 
-@bot.tree.command(name="ban", description="Забанить участника")
-@app_commands.checks.has_permissions(ban_members=True)
-async def slash_ban(int: discord.Interaction, member: discord.Member, reason: str = "Не указана"):
-    await member.ban(reason=reason)
-    await int.response.send_message(embed=create_embed("🔨 Бан", f"{member.mention} забанен."))
-
-@bot.tree.command(name="mute", description="Замутить участника")
+@bot.tree.command(name="mute", description="Мут")
 @app_commands.checks.has_permissions(moderate_members=True)
-async def slash_mute(int: discord.Interaction, member: discord.Member, time: str, reason: str = "Не указана"):
-    # Тут можно добавить parse_time логику, если нужно
-    await int.response.send_message(embed=create_embed("🔇 Мут", f"{member.mention} на {time}."))
+async def mute(int: discord.Interaction, member: discord.Member, time: str, reason: str = "Нет"):
+    await int.response.defer()
+    mins = int(re.search(r'\d+', time).group()) if re.search(r'\d+', time) else 10
+    await member.timeout(discord.utils.utcnow() + datetime.timedelta(minutes=mins), reason=reason)
+    await int.followup.send(embed=create_embed("🔇 Мут", f"{member.mention} на {mins} мин.\nПричина: {reason}"))
 
-# --- ОБРАБОТКА ОШИБОК ДЛЯ СЛЕШ-КОМАНД ---
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("🚫 У тебя нет прав для этого.", ephemeral=True)
+@bot.tree.command(name="unmute", description="Анмут")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def unmute(int: discord.Interaction, member: discord.Member):
+    await int.response.defer()
+    await member.timeout(None)
+    await int.followup.send(embed=create_embed("✅ Анмут", f"{member.mention} свободен."))
 
-# --- ТЕКСТОВЫЕ КОМАНДЫ (С ЗАЩИТОЙ) ---
-
-@bot.command()
-@commands.has_permissions(ban_members=True)
-async def ban(ctx, member: discord.Member, *, reason: str = "Не указана"):
+@bot.tree.command(name="ban", description="Бан")
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(int: discord.Interaction, member: discord.Member, reason: str = "Нет"):
+    await int.response.defer()
     await member.ban(reason=reason)
-    await ctx.send(embed=create_embed("🔨 Бан", f"{member.mention} забанен."))
+    await int.followup.send(embed=create_embed("🔨 Бан", f"{member.mention} забанен."))
 
-@bot.command()
-@commands.has_permissions(moderate_members=True)
-async def mute(ctx, member: discord.Member, time: str, *, reason: str = "Не указана"):
-    await ctx.send(embed=create_embed("🔇 Мут", f"{member.mention} на {time}."))
+@bot.tree.command(name="unban", description="Разбан по ID")
+@app_commands.checks.has_permissions(ban_members=True)
+async def unban(int: discord.Interaction, user_id: str):
+    await int.response.defer()
+    user = await bot.fetch_user(int(user_id))
+    await int.guild.unban(user)
+    await int.followup.send(embed=create_embed("🔓 Разбан", f"{user.name} разбанен."))
 
-# --- ОБРАБОТКА ОШИБОК ДЛЯ ТЕКСТОВЫХ КОМАНД ---
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send(embed=create_embed("🚫 Доступ запрещен", "У тебя недостаточно прав."))
+@bot.tree.command(name="warn", description="Варн")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def warn(int: discord.Interaction, member: discord.Member, reason: str = "Нет"):
+    await int.response.defer()
+    warns[member.id] = warns.get(member.id, 0) + 1
+    await int.followup.send(embed=create_embed("⚠️ Варн", f"{member.mention} ({warns[member.id]}/3)\nПричина: {reason}"))
+
+@bot.tree.command(name="unwarn", description="Снять варн")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def unwarn(int: discord.Interaction, member: discord.Member):
+    await int.response.defer()
+    if warns.get(member.id, 0) > 0:
+        warns[member.id] -= 1
+        await int.followup.send(embed=create_embed("✅ Снятие варна", f"У {member.mention} теперь {warns[member.id]}/3 варнов."))
+    else:
+        await int.followup.send("У пользователя нет активных варнов.")
+
+@bot.tree.command(name="warnlist", description="Список варнов")
+async def warnlist(int: discord.Interaction):
+    desc = "\n".join([f"<@{uid}>: {count}/3" for uid, count in warns.items() if count > 0]) or "Список чист."
+    await int.response.send_message(embed=create_embed("📋 Warn List", desc))
+
+@bot.tree.error
+async def on_app_command_error(int: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await int.response.send_message("🚫 Недостаточно прав.", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync() # Синхронизирует команды, чтобы проверки применились
-    print("WERTIX SYSTEM | PROTECTED & READY")
+    await bot.tree.sync()
+    print("WERTIX SYSTEM | FULLY OPERATIONAL")
 
 bot.run(TOKEN)
