@@ -105,6 +105,14 @@ async def unwarn(interaction, member: discord.Member):
     else:
         await interaction.response.send_message("❌ У объекта нет активных нарушений.", ephemeral=True)
 
+@bot.tree.command(name="clear", description="Очистка сообщений")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear(interaction, amount: int):
+    if amount < 1 or amount > 100:
+        return await interaction.response.send_message("❌ Укажите число от 1 до 100.", ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.response.send_message(f"✅ Очищено {len(deleted)} сообщений.", ephemeral=True)
+
 @bot.tree.command(name="warnlist", description="Глобальный реестр нарушителей")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def warnlist(interaction):
@@ -114,3 +122,4 @@ async def warnlist(interaction):
     await interaction.response.send_message(embed=embed)
 
 bot.run(os.environ['DISCORD_TOKEN'])
+
