@@ -63,7 +63,7 @@ async def ban(interaction, member: discord.Member, reason: str = "Нарушен
     await member.ban(reason=reason)
     await dispatch(interaction, member, "BAN", "Объект исключен из системы.", discord.Color.red(), {"Reason": reason})
 
-@bot.tree.command(name="mute", description="Изолировать участника")
+@bot.tree.command(name="mute", description="Отправить в тайм оут участника")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def mute(interaction, member: discord.Member, minutes: int, reason: str = "Нарушение"):
     await member.timeout(datetime.timedelta(minutes=minutes), reason=reason)
