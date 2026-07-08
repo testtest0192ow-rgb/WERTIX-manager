@@ -13,13 +13,18 @@ LOG_CHANNEL_ID = 1523365711790080151
 
 def load_data():
     if os.path.exists(WARNS_FILE):
-        with open(WARNS_FILE, "r") as f: return json.load(f)
+        try:
+            with open(WARNS_FILE, "r") as f: 
+                return json.load(f)
+        except:
+            return {}
     return {}
 
 warns = load_data()
 
 def save_data():
-    with open(WARNS_FILE, "w") as f: json.dump(warns, f)
+    with open(WARNS_FILE, "w") as f: 
+        json.dump(warns, f, indent=4)
 
 # --- WERTIX QUANTUM UI ---
 class UI:
@@ -30,8 +35,9 @@ class UI:
         embed.set_thumbnail(url=target.display_avatar.url)
         embed.add_field(name="Target Identity", value=f"{target.mention} (`{target.id}`)", inline=True)
         if fields:
-            for k, v in fields.items(): embed.add_field(name=k, value=v, inline=True)
-        embed.set_footer(text="WERTIX SEC | TRANSCENDENT PROTOCOL 2026", icon_url=target.guild.icon.url)
+            for k, v in fields.items(): 
+                embed.add_field(name=k, value=v, inline=True)
+        embed.set_footer(text="WERTIX SEC | TRANSCENDENT PROTOCOL 2026", icon_url=target.guild.icon.url if target.guild.icon else None)
         embed.timestamp = datetime.datetime.now()
         return embed
 
@@ -39,11 +45,23 @@ class UI:
 async def dispatch(interaction, member, title, desc, color, fields=None):
     try:
         embed = UI.embed(title, desc, color, member, interaction.user, fields)
-        await interaction.response.send_message(embed=embed)
+        
+        # Проверяем, ответил ли уже бот на это взаимодействие
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed)
+            
+        # Отправка лога в канал
         log_ch = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_ch: await log_ch.send(embed=embed)
-        try: await member.send(embed=embed)
-        except: pass
+        if log_ch: 
+            await log_ch.send(embed=embed)
+            
+        # Отправка уведомления нарушителю в ЛС
+        try: 
+            await member.send(embed=embed)
+        except: 
+            pass
     except Exception as e:
         print(f"CRITICAL DISPATCH ERROR: {e}")
 
@@ -63,9 +81,14 @@ async def ban(interaction, member: discord.Member, reason: str = "Нарушен
 @bot.tree.command(name="unban", description="Восстановление доступа")
 @app_commands.checks.has_permissions(ban_members=True)
 async def unban(interaction, user_id: str):
-    user = await bot.fetch_user(int(user_id))
-    await interaction.guild.unban(user)
-    await interaction.response.send_message(f"✅ Доступ для {user.name} восстановлен.")
+    # Сначала говорим Дискорду, что мы приняли команду (чтобы не было "Приложение не отвечает")
+    await interaction.response.defer(ephemeral=True)
+    try:
+        user = await bot.fetch_user(int(user_id))
+        await interaction.guild.unban(user)
+        await interaction.followup.send(f"✅ Доступ для {user.name} восстановлен.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Не удалось снять бан. Ошибка: {e}", ephemeral=True)
 
 @bot.tree.command(name="mute", description="Таймаут нарушителя")
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -86,10 +109,12 @@ async def warn(interaction, member: discord.Member, reason: str = "Наруше�
     warns[uid] = warns.get(uid, 0) + 1
     count = warns[uid]
     desc = "Предупреждение зафиксировано в реестре."
+    
     if count >= 3:
         await member.timeout(datetime.timedelta(hours=5), reason="Критический лимит 3/3")
         desc = "Критический лимит достигнут! Активирован 5-часовой протокол изоляции."
         warns[uid] = 0
+        
     save_data()
     await dispatch(interaction, member, "WARNING", desc, discord.Color.yellow(), {"Violations": f"{count}/3", "Reason": reason})
 
@@ -110,8 +135,11 @@ async def unwarn(interaction, member: discord.Member):
 async def clear(interaction, amount: int):
     if amount < 1 or amount > 100:
         return await interaction.response.send_message("❌ Укажите число от 1 до 100.", ephemeral=True)
+    
+    # Сначала деферим ответ, чтобы Дискорд дал нам время на удаление сообщений
+    await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=amount)
-    await interaction.response.send_message(f"✅ Очищено {len(deleted)} сообщений.", ephemeral=True)
+    await interaction.followup.send(f"✅ Очищено {len(deleted)} сообщений.", ephemeral=True)
 
 @bot.tree.command(name="warnlist", description="Глобальный реестр нарушителей")
 @app_commands.checks.has_permissions(manage_messages=True)
@@ -121,5 +149,6 @@ async def warnlist(interaction):
     embed = discord.Embed(title="📜 WERTIX | GLOBAL REGISTRY", description=list_str, color=discord.Color.blue())
     await interaction.response.send_message(embed=embed)
 
+# Замени os.environ на строку со своим токеном, если не используешь переменные окружения:
+# bot.run("ТВОЙ_ТОКЕН")
 bot.run(os.environ['DISCORD_TOKEN'])
-
