@@ -26,8 +26,7 @@ keep_alive()
 # --- ЯДРО И КОНФИГУРАЦИЯ ---
 intents = discord.Intents.default()
 intents.members = True
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="wertix_sec_hidden_", intents=intents)
 
 WARNS_FILE = "warns.json"
 LOG_CHANNEL_ID = 1523365711790080151
